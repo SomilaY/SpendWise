@@ -8,6 +8,9 @@ struct SummaryHeaderView: View {
     let total: Double    // spent this month
     let budget: Double   // monthly limit
 
+    // Shared with the main screen, so the arrows can change the month.
+    @Binding var month: Date
+
     // How much of the budget is used (0.5 = half). Guard against dividing by zero.
     private var progress: Double { budget > 0 ? total / budget : 0 }
     private var remaining: Double { budget - total }
@@ -15,12 +18,7 @@ struct SummaryHeaderView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // Thin, widely spaced, silver label: the "elegant label" look.
-            Text(Date.now.formatted(.dateTime.month(.wide).year()).uppercased())
-                .font(.caption)
-                .fontWeight(.light)
-                .tracking(2)
-                .foregroundStyle(Theme.silver)
+            MonthPickerView(selectedMonth: $month)
 
             // Big bold figure. numericText makes digits roll like an odometer
             // when the value changes.
@@ -76,6 +74,6 @@ struct SummaryHeaderView: View {
 #Preview {
     ZStack {
         AmbientBackground(budgetUsed: 0.5)
-        SummaryHeaderView(total: 4200, budget: 10000).padding()
+        SummaryHeaderView(total: 4200, budget: 10000, month: .constant(.now)).padding()
     }
 }

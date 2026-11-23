@@ -3,26 +3,37 @@ import SwiftData
 import UIKit
 
 struct AddExpenseView: View {
-    // modelContext is the "pen" we use to write into the database.
     @Environment(\.modelContext) private var modelContext
-    // dismiss closes this screen, like pressing a back button from code.
     @Environment(\.dismiss) private var dismiss
 
-    // @State = the form's scratchpad. These hold what the user has typed
-    // so far. Nothing is saved until they press Save.
-    @State private var title = ""
-    @State private var amount: Double?   // Optional: empty until they type something
-    @State private var category: ExpenseCategory = .food
-    @State private var date = Date()
+    // nil = we're adding a NEW expense.
+    // Not nil = we're editing this existing one.
+    let expense: Expense?
 
-    // The Save button only works when the form makes sense.
-    // A computed property is recalculated every time the screen refreshes.
+    // The form's scratchpad (nothing is saved until Save is pressed).
+    @State private var title: String
+    @State private var amount: Double?
+    @State private var category: ExpenseCategory
+    @State private var date: Date
+
+    // A custom initializer: this is where we "pre-fill the form".
+    // `State(initialValue:)` sets the starting value of each scratchpad field.
+    // If there's no expense (adding), we use blank defaults instead.
+    init(expense: Expense? = nil) {
+        self.expense = expense
+        _title = State(initialValue: expense?.title ?? "")
+        _amount = State(initialValue: expense?.amount)
+        _category = State(initialValue: expense?.category ?? .food)
+        _date = State(initialValue: expense?.date ?? Date())
+    }
+
+    private var isEditing: Bool { expense != nil }
+
     private var isValid: Bool {
         guard let amount else { return false }
         return !title.trimmingCharacters(in: .whitespaces).isEmpty && amount > 0
     }
 
-    // One shared "glass row" look for every section of the form.
     private var glassRow: some View {
         Rectangle().fill(.ultraThinMaterial)
     }
@@ -55,10 +66,10 @@ struct AddExpenseView: View {
                     }
                     .listRowBackground(glassRow)
                 }
-                // Hide the form's default grey background so the glow shows.
                 .scrollContentBackground(.hidden)
             }
-            .navigationTitle("New Expense")
+            // The title changes depending on the mode.
+            .navigationTitle(isEditing ? "Edit Expense" : "New Expense")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -70,7 +81,6 @@ struct AddExpenseView: View {
                         .disabled(!isValid)
                 }
             }
-            // Emerald becomes the app's accent colour (buttons, pickers, etc.)
             .tint(Theme.emerald)
         }
         .preferredColorScheme(.dark)
@@ -78,19 +88,23 @@ struct AddExpenseView: View {
 
     private func save() {
         guard let amount else { return }
+        let cleanTitle = title.trimmingCharacters(in: .whitespaces)
 
-        let expense = Expense(
-            title: title.trimmingCharacters(in: .whitespaces),
-            amount: amount,
-            category: category,
-            date: date
-        )
-        modelContext.insert(expense)
+        if let expense {
+            // EDITING: just change the existing row's values.
+            // SwiftData notices the changes and saves them automatically,
+            // like Google Docs. There's no separate "save" step.
+            expense.title = cleanTitle
+            expense.amount = amount
+            expense.category = category
+            expense.date = date
+        } else {
+            // ADDING: create a brand new row and hand it to the database.
+            let newExpense = Expense(title: cleanTitle, amount: amount, category: category, date: date)
+            modelContext.insert(newExpense)
+        }
 
-        // The "success" buzz: two quick, soft taps. It's the same pattern
-        // Apple Pay uses, so it feels familiar and trustworthy.
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-
         dismiss()
     }
 }

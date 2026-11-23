@@ -5,23 +5,23 @@ import UIKit
 struct ExpenseListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Expense.date, order: .reverse) private var expenses: [Expense]
-
-    // @AppStorage saves a simple value on the phone, like a sticky note
-    // that survives closing the app. 10,000 is a placeholder; we can add
-    // a settings screen to change it later.
     @AppStorage("monthlyBudget") private var monthlyBudget = 10_000.0
 
-    @State private var showingAddExpense = false
+    // Which "drawer" of the filing cabinet we're looking at. Starts at now.
+    @State private var selectedMonth = Date()
 
-    // Our "kitchen calculator" from before, now feeding the new design.
-    private var monthExpenses: [Expense] { ExpenseSummary.thisMonth(expenses) }
+    // Three possible sheets:
+    @State private var showingAddExpense = false
+    @State private var expenseToEdit: Expense?    // set this to open the edit form
+    @State private var showingSettings = false
+
+    // Everything below uses the SELECTED month, not just the current one.
+    private var monthExpenses: [Expense] { ExpenseSummary.inMonth(expenses, of: selectedMonth) }
     private var monthTotal: Double { ExpenseSummary.total(of: monthExpenses) }
     private var budgetUsed: Double { monthlyBudget > 0 ? monthTotal / monthlyBudget : 0 }
 
     var body: some View {
         NavigationStack {
-            // ZStack stacks things like layers of paper:
-            // the glowing background at the back, the content in front.
             ZStack {
                 AmbientBackground(budgetUsed: budgetUsed)
 
@@ -33,14 +33,26 @@ struct ExpenseListView: View {
                     )
                 } else {
                     List {
-                        // App title: thin and elegant.
-                        Text("SpendWise")
-                            .font(.system(size: 34, weight: .thin))
-                            .foregroundStyle(.white)
-                            .floatIn(order: 0)
-                            .clearListRow()
+                        // Title on the left, settings button on the right.
+                        HStack {
+                            Text("SpendWise")
+                                .font(.system(size: 34, weight: .thin))
+                                .foregroundStyle(.white)
+                            Spacer()
+                            Button {
+                                showingSettings = true
+                            } label: {
+                                Image(systemName: "slider.horizontal.3")
+                                    .foregroundStyle(Theme.silver)
+                                    .frame(width: 44, height: 44)
+                                    .background(.ultraThinMaterial, in: Circle())
+                            }
+                            .buttonStyle(.plain)   // keeps the tap inside the button only
+                        }
+                        .floatIn(order: 0)
+                        .clearListRow()
 
-                        SummaryHeaderView(total: monthTotal, budget: monthlyBudget)
+                        SummaryHeaderView(total: monthTotal, budget: monthlyBudget, month: $selectedMonth)
                             .floatIn(order: 1)
                             .clearListRow()
 
@@ -63,25 +75,36 @@ struct ExpenseListView: View {
                             .foregroundStyle(Theme.silver)
                             .clearListRow()
 
-                        ForEach(expenses) { expense in
-                            ExpenseRow(expense: expense)
+                        // A friendly message if this month's drawer is empty.
+                        if monthExpenses.isEmpty {
+                            Text("Nothing spent in this month.")
+                                .font(.subheadline)
+                                .fontWeight(.light)
+                                .foregroundStyle(Theme.silver)
                                 .clearListRow()
+                        }
+
+                        ForEach(monthExpenses) { expense in
+                            // Wrapping the row in a Button makes it tappable.
+                            // Tapping sets expenseToEdit, which opens the edit sheet.
+                            Button {
+                                expenseToEdit = expense
+                            } label: {
+                                ExpenseRow(expense: expense)
+                            }
+                            .buttonStyle(.plain)
+                            .clearListRow()
                         }
                         .onDelete(perform: deleteExpenses)
 
-                        // Extra space at the bottom so the floating button
-                        // never covers the last row.
                         Color.clear.frame(height: 70).clearListRow()
                     }
                     .listStyle(.plain)
-                    // Hides the List's default background so our glow shows through.
                     .scrollContentBackground(.hidden)
                 }
             }
-            // A floating action button, hovering over everything in the corner.
             .overlay(alignment: .bottomTrailing) {
                 Button {
-                    // A light tap, like pressing a physical button.
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     showingAddExpense = true
                 } label: {
@@ -95,30 +118,38 @@ struct ExpenseListView: View {
                                            endPoint: .bottomTrailing),
                             in: Circle()
                         )
-                        // A glow under the button, as if it's emitting light.
                         .shadow(color: Theme.emerald.opacity(0.6), radius: 18, y: 6)
                 }
                 .padding(24)
             }
             .toolbar(.hidden, for: .navigationBar)
+            // Sheet 1: add a new expense (blank form).
             .sheet(isPresented: $showingAddExpense) {
                 AddExpenseView()
             }
+            // Sheet 2: edit an expense. It opens whenever expenseToEdit is set,
+            // and passes that expense in so the form is pre-filled.
+            .sheet(item: $expenseToEdit) { expense in
+                AddExpenseView(expense: expense)
+            }
+            // Sheet 3: budget settings.
+            .sheet(isPresented: $showingSettings) {
+                BudgetSettingsView()
+            }
         }
-        // Dark mode first: always dark, whatever the phone's setting.
         .preferredColorScheme(.dark)
     }
 
+    // The list on screen shows monthExpenses, so "row 2" means the second
+    // item of THAT list. We must look it up there, not in the full list,
+    // otherwise we'd delete the wrong expense.
     private func deleteExpenses(at offsets: IndexSet) {
         for index in offsets {
-            modelContext.delete(expenses[index])
+            modelContext.delete(monthExpenses[index])
         }
     }
 }
 
-// A separate small view for one row. Splitting the UI into small pieces
-// keeps each file easy to read, like having one recipe card per dish
-// instead of one giant cookbook page.
 struct ExpenseRow: View {
     let expense: Expense
 

@@ -13,11 +13,12 @@ struct CategoryTotal: Identifiable {
 // or the database, it's also very easy to unit test later.
 enum ExpenseSummary {
 
-    // Keeps only the expenses from the current month.
-    // Calendar handles the awkward parts for us (month lengths, leap years).
-    static func thisMonth(_ expenses: [Expense]) -> [Expense] {
+    // Keeps only the expenses from the same month as `date`.
+    // Before, "which month" was always now. Now the caller chooses,
+    // like asking the filing cabinet for a specific drawer.
+    static func inMonth(_ expenses: [Expense], of date: Date) -> [Expense] {
         expenses.filter {
-            Calendar.current.isDate($0.date, equalTo: .now, toGranularity: .month)
+            Calendar.current.isDate($0.date, equalTo: date, toGranularity: .month)
         }
     }
 
@@ -40,12 +41,9 @@ enum ExpenseSummary {
             .sorted { $0.total > $1.total }
     }
 
-    // Looks at the numbers and writes one sentence about them.
-    // This is simple rule-based logic: no real AI involved yet.
     static func insight(for expenses: [Expense], total: Double) -> String? {
-        // totalsByCategory is sorted biggest-first, so .first is the top spender.
         guard let top = totalsByCategory(expenses).first, total > 0 else { return nil }
         let share = Int((top.total / total * 100).rounded())
-        return "\(top.category.rawValue) is your biggest category this month, at \(share)% of your spending."
+        return "\(top.category.rawValue) is your biggest category, at \(share)% of your spending."
     }
 }
